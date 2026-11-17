@@ -312,6 +312,10 @@ defmodule DBConnection do
   `{:disconnect | :disconnect_and_retry, exception, state}` to
   error and disconnect (and optionally retry).
 
+  When describing or encoding a prepared query raised, the query is closed
+  before the exception is reraised, and `opts` holds that exception under
+  `:raised`.
+
   This callback is called in the client process.
   """
   @callback handle_close(query, opts :: Keyword.t(), state :: any) ::
@@ -1634,7 +1638,13 @@ defmodule DBConnection do
   end
 
   defp raised_close(conn, query, meter, opts, kind, reason, stack) do
-    with {:ok, _, meter} <- run_close(conn, query, meter, opts) do
+    raised =
+      case kind do
+        :error -> Exception.normalize(:error, reason, stack)
+        kind -> %ErlangError{original: {kind, reason}}
+      end
+
+    with {:ok, _, meter} <- run_close(conn, query, meter, Keyword.put(opts, :raised, raised)) do
       {kind, reason, stack, meter}
     end
   end

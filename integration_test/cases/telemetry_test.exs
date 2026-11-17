@@ -100,7 +100,11 @@ defmodule TelemetryTest do
     refute_received {[:db_connection, _], _, _}
   end
 
+<<<<<<< HEAD
   test "a checkout that times out in the queue is not a checkout" do
+=======
+  test "a checkout that times out in the queue reports its wait and error" do
+>>>>>>> fork/claude/project-thread-05u5zn
     {:ok, agent} = A.start_link([{:ok, :state}, {:idle, :state}, {:idle, :state}])
 
     {:ok, pool} =
@@ -115,7 +119,16 @@ defmodule TelemetryTest do
     end)
 
     assert_receive {[:db_connection, :checkout], _, %{connection_module: TestConnection}}
+<<<<<<< HEAD
     assert_receive {[:db_connection, :checkin], _, _}
     refute_received {[:db_connection, _], _, _}
+=======
+
+    assert_receive {[:db_connection, :checkout], %{wait_time: wait_time},
+                    %{pool: ^pool, error: %DBConnection.ConnectionError{}} = metadata}
+
+    assert wait_time > 0
+    refute Map.has_key?(metadata, :connection_module)
+>>>>>>> fork/claude/project-thread-05u5zn
   end
 end

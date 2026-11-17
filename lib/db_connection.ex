@@ -609,25 +609,23 @@ defmodule DBConnection do
     * `:opts` - All options given to the pool operation
 
   A `[:db_connection, :checkout]` event is published whenever a process
-  checks out a connection, or fails to. It is emitted from the process that
-  checks out the connection, so it covers every operation on the pool.
+  checks out a connection. It is emitted from the process that checks out
+  the connection, so it covers every operation on the pool.
 
   Measurements, in `:native` time units:
 
     * `:wait_time` - How long the caller waited for the pool to give it a connection
 
     * `:idle_time` - How long the connection sat in the pool before this checkout,
-      or `nil` when the pool does not know. Only present on success.
+      or `nil` when the pool does not know
 
   Metadata:
 
     * `:pool` - The pool given to the operation
 
-    * `:label` - The pool's `:label` start option, or `nil`. Only present on success.
+    * `:label` - The pool's `:label` start option, or `nil`
 
-    * `:connection_module` - The `DBConnection` callback module. Only present on success.
-
-    * `:error` - The exception the checkout failed with. Only present on failure.
+    * `:connection_module` - The `DBConnection` callback module
 
   A `[:db_connection, :checkin]` event is published when the process that
   checked out a connection gives it back, from that process.
@@ -1055,7 +1053,7 @@ defmodule DBConnection do
               )
 
             disconnect(conn, err)
-            emit_checkin(conn)
+            checkin(conn)
             raise err
         end
 
@@ -1400,7 +1398,10 @@ defmodule DBConnection do
 
         :telemetry.execute(
           [:db_connection, :checkout],
-          %{wait_time: checked_out_at - checkout, idle_time: idle_time(checkin, checked_out_at)},
+          %{
+            wait_time: checked_out_at - checkout,
+            idle_time: checkin && max(checked_out_at - checkin, 0)
+          },
           metadata
         )
 
@@ -1415,27 +1416,20 @@ defmodule DBConnection do
         {:ok, conn, meter}
 
       {:error, err} ->
-        :telemetry.execute(
-          [:db_connection, :checkout],
-          %{wait_time: System.monotonic_time() - checkout},
-          %{pool: pool, error: err}
-        )
-
         {:error, err, past_event(meter, :checkout, checkout)}
     end
   end
 
-  defp idle_time(nil, _checked_out_at), do: nil
-  # The pool passes 0 when it hands a connection straight to a queued caller.
-  defp idle_time(0, _checked_out_at), do: 0
-  defp idle_time(checkin, checked_out_at), do: max(checked_out_at - checkin, 0)
+  defp checkin(%DBConnection{} = conn) do
+    %DBConnection{
+      pool_ref: pool_ref,
+      checked_out_at: checked_out_at,
+      telemetry_metadata: metadata
+    } =
+      conn
 
-  defp checkin(%DBConnection{pool_ref: pool_ref} = conn) do
     Holder.checkin(pool_ref)
-    emit_checkin(conn)
-  end
 
-  defp emit_checkin(%DBConnection{checked_out_at: checked_out_at, telemetry_metadata: metadata}) do
     :telemetry.execute(
       [:db_connection, :checkin],
       %{use_time: System.monotonic_time() - checked_out_at},

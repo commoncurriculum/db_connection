@@ -378,6 +378,7 @@ defmodule DBConnection do
   @callback disconnect(err :: Exception.t(), state :: any) :: :ok
 
   @connection_module_key :connection_module
+  @pool_label_key :db_connection_pool_label
   @checkout_retries 3
 
   @doc """
@@ -613,8 +614,8 @@ defmodule DBConnection do
     * `:opts` - All options given to the pool operation
 
   A `[:db_connection, :checkout]` event is published whenever a process
-  checks out a connection. It is emitted from the process that checks out
-  the connection, so it covers every operation on the pool.
+  checks out a connection, or fails to. It is emitted from the process that
+  checks out the connection, so it covers every operation on the pool.
 
   Measurements, in `:native` time units:
 
@@ -630,6 +631,9 @@ defmodule DBConnection do
     * `:label` - The pool's `:label` start option, or `nil`
 
     * `:connection_module` - The `DBConnection` callback module
+
+    * `:error` - Only when the checkout failed, such as when the request was
+      dropped from the queue: the exception. There is no checkin event then.
 
   A `[:db_connection, :checkin]` event is published when the process that
   checked out a connection gives it back, from that process.
@@ -1342,8 +1346,9 @@ defmodule DBConnection do
   end
 
   @doc false
-  def register_as_pool(conn_module) do
+  def register_as_pool(conn_module, label \\ nil) do
     Process.put(@connection_module_key, conn_module)
+    Process.put(@pool_label_key, label)
   end
 
   @doc """
@@ -1420,7 +1425,25 @@ defmodule DBConnection do
         {:ok, conn, meter}
 
       {:error, err} ->
+        {label, conn_mod} = pool_identity(pool)
+
+        :telemetry.execute(
+          [:db_connection, :checkout],
+          %{wait_time: System.monotonic_time() - checkout, idle_time: nil},
+          %{pool: pool, label: label, connection_module: conn_mod, error: err}
+        )
+
         {:error, err, past_event(meter, :checkout, checkout)}
+    end
+  end
+
+  defp pool_identity(pool) do
+    with pid when is_pid(pid) <- pool_pid(pool),
+         {:dictionary, dictionary} <- Process.info(pid, :dictionary) do
+      {List.keyfind(dictionary, @pool_label_key, 0, {nil, nil}) |> elem(1),
+       List.keyfind(dictionary, @connection_module_key, 0, {nil, nil}) |> elem(1)}
+    else
+      _ -> {nil, nil}
     end
   end
 

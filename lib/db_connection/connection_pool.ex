@@ -48,7 +48,7 @@ defmodule DBConnection.ConnectionPool do
   @impl GenServer
   def init({mod, opts}) do
     Process.flag(:trap_exit, true)
-    DBConnection.register_as_pool(mod)
+    DBConnection.register_as_pool(mod, opts[:label])
 
     queue = :ets.new(__MODULE__.Queue, [:protected, :ordered_set, decentralized_counters: true])
 

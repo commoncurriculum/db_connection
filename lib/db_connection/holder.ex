@@ -14,6 +14,7 @@ defmodule DBConnection.Holder do
     :state,
     :lock,
     :connected_at,
+    label: nil,
     deadline: nil,
     status: :ok
   ])
@@ -27,11 +28,20 @@ defmodule DBConnection.Holder do
 
   @spec new(pid, reference, module, term) :: t
   @spec new(pid, reference, module, term, integer) :: t
-  def new(pool, ref, mod, state, connected_at \\ System.monotonic_time()) do
+  @spec new(pid, reference, module, term, integer, term) :: t
+  def new(pool, ref, mod, state, connected_at \\ System.monotonic_time(), label \\ nil) do
     # Insert before setting heir so that pool can't receive empty table
     holder = :ets.new(__MODULE__, [:public, :ordered_set, decentralized_counters: true])
 
-    conn = conn(connection: self(), module: mod, state: state, connected_at: connected_at)
+    conn =
+      conn(
+        connection: self(),
+        module: mod,
+        state: state,
+        connected_at: connected_at,
+        label: label
+      )
+
     true = :ets.insert_new(holder, conn)
 
     :ets.setopts(holder, {:heir, pool, ref})
@@ -40,8 +50,9 @@ defmodule DBConnection.Holder do
 
   @spec update(pid, reference, module, term) :: {:ok, t} | :error
   @spec update(pid, reference, module, term, integer) :: {:ok, t} | :error
-  def update(pool, ref, mod, state, connected_at \\ System.monotonic_time()) do
-    holder = new(pool, ref, mod, state, connected_at)
+  @spec update(pid, reference, module, term, integer, term) :: {:ok, t} | :error
+  def update(pool, ref, mod, state, connected_at \\ System.monotonic_time(), label \\ nil) do
+    holder = new(pool, ref, mod, state, connected_at, label)
 
     try do
       :ets.give_away(holder, pool, {:checkin, ref, System.monotonic_time()})
@@ -168,6 +179,13 @@ defmodule DBConnection.Holder do
   end
 
   ## Pool state helpers API (invoked by callers)
+
+  @spec label(pool_ref :: any) :: term
+  def label(pool_ref(holder: holder)) do
+    :ets.lookup_element(holder, :conn, conn(:label) + 1)
+  rescue
+    ArgumentError -> nil
+  end
 
   @spec put_state(pool_ref :: any, term) :: :ok
   def put_state(pool_ref(holder: sink_holder), state) do

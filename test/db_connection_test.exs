@@ -45,6 +45,7 @@ defmodule DBConnectionTest do
                :configure,
                :idle_interval,
                :idle_limit,
+               :label,
                :max_restarts,
                :max_seconds,
                :name,

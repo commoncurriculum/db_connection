@@ -71,7 +71,7 @@ defmodule DBConnection.Ownership.Manager do
 
   @impl true
   def init({module, owner_opts, pool_opts}) do
-    DBConnection.register_as_pool(module)
+    DBConnection.register_as_pool(module, pool_opts[:label])
 
     ets =
       case Keyword.fetch(owner_opts, :name) do

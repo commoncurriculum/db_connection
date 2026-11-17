@@ -73,10 +73,12 @@ defmodule TestPoolMetrics do
                DBConnection.get_connection_metrics(pool)
     end)
 
-    assert [
-             connect: [_],
-             ping: [:state]
-           ] = A.record(agent)
+    poll(fn ->
+      assert [
+               connect: [_],
+               ping: [:state]
+             ] = A.record(agent)
+    end)
   end
 
   test "considers enqueue/dequeue in metrics when busy" do

@@ -100,11 +100,17 @@ defmodule TelemetryTest do
     refute_received {[:db_connection, _], _, _}
   end
 
-  test "a checkout that times out in the queue is not a checkout" do
+  test "a checkout that times out in the queue is a checkout with its error" do
     {:ok, agent} = A.start_link([{:ok, :state}, {:idle, :state}, {:idle, :state}])
 
     {:ok, pool} =
-      P.start_link(agent: agent, parent: self(), queue_target: 10, queue_interval: 10)
+      P.start_link(
+        agent: agent,
+        parent: self(),
+        label: :my_pool,
+        queue_target: 10,
+        queue_interval: 10
+      )
 
     attach(pool)
 
@@ -114,8 +120,17 @@ defmodule TelemetryTest do
       end
     end)
 
-    assert_receive {[:db_connection, :checkout], _, %{connection_module: TestConnection}}
+    assert_receive {[:db_connection, :checkout], _, %{connection_module: TestConnection} = ok}
+    refute Map.has_key?(ok, :error)
+
+    assert_receive {[:db_connection, :checkout], %{wait_time: wait_time, idle_time: nil},
+                    %{
+                      label: :my_pool,
+                      connection_module: TestConnection,
+                      error: %DBConnection.ConnectionError{reason: :queue_timeout}
+                    }}
+
+    assert wait_time > 0
     assert_receive {[:db_connection, :checkin], _, _}
-    refute_received {[:db_connection, _], _, _}
   end
 end

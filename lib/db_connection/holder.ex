@@ -27,9 +27,9 @@ defmodule DBConnection.Holder do
   ## Holder API
 
   @spec new(pid, reference, module, term) :: t
-  @spec new(pid, reference, module, term, integer) :: t
-  @spec new(pid, reference, module, term, integer, term) :: t
-  def new(pool, ref, mod, state, connected_at \\ System.monotonic_time(), label \\ nil) do
+  @spec new(pid, reference, module, term, term) :: t
+  @spec new(pid, reference, module, term, term, integer) :: t
+  def new(pool, ref, mod, state, label \\ nil, connected_at \\ System.monotonic_time()) do
     # Insert before setting heir so that pool can't receive empty table
     holder = :ets.new(__MODULE__, [:public, :ordered_set, decentralized_counters: true])
 
@@ -49,10 +49,10 @@ defmodule DBConnection.Holder do
   end
 
   @spec update(pid, reference, module, term) :: {:ok, t} | :error
-  @spec update(pid, reference, module, term, integer) :: {:ok, t} | :error
-  @spec update(pid, reference, module, term, integer, term) :: {:ok, t} | :error
-  def update(pool, ref, mod, state, connected_at \\ System.monotonic_time(), label \\ nil) do
-    holder = new(pool, ref, mod, state, connected_at, label)
+  @spec update(pid, reference, module, term, term) :: {:ok, t} | :error
+  @spec update(pid, reference, module, term, term, integer) :: {:ok, t} | :error
+  def update(pool, ref, mod, state, label \\ nil, connected_at \\ System.monotonic_time()) do
+    holder = new(pool, ref, mod, state, label, connected_at)
 
     try do
       :ets.give_away(holder, pool, {:checkin, ref, System.monotonic_time()})

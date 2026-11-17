@@ -286,7 +286,8 @@ defmodule DBConnection do
   needed to prepare a query and/or the query can be saved in the
   database to call later.
 
-  This callback is called in the client process.
+  This callback is called in the client process. `opts` has `prepare_execute: true`
+  when the query is executed right after it is prepared, in the same call.
   """
   @callback handle_prepare(query, opts :: Keyword.t(), state :: any) ::
               {:ok, query, new_state :: any}
@@ -1638,7 +1639,8 @@ defmodule DBConnection do
   end
 
   defp run_prepare_execute(conn, query, params, meter, opts) do
-    with {:ok, query, meter} <- run_prepare(conn, query, meter, opts),
+    with {:ok, query, meter} <-
+           run_prepare(conn, query, meter, Keyword.put(opts, :prepare_execute, true)),
          {:ok, params, meter} <- encode(conn, query, params, meter, opts) do
       run_execute(conn, query, params, meter, opts)
     end

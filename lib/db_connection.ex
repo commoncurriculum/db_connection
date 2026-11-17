@@ -286,8 +286,9 @@ defmodule DBConnection do
   needed to prepare a query and/or the query can be saved in the
   database to call later.
 
-  This callback is called in the client process. `opts` has `prepare_execute: true`
-  when the query is executed right after it is prepared, in the same call.
+  This callback is called in the client process. `opts` has `prepare_then: :execute`
+  or `prepare_then: :declare` when the query is executed, or declared as a cursor, right
+  after it is prepared, in the same call.
   """
   @callback handle_prepare(query, opts :: Keyword.t(), state :: any) ::
               {:ok, query, new_state :: any}
@@ -1640,7 +1641,7 @@ defmodule DBConnection do
 
   defp run_prepare_execute(conn, query, params, meter, opts) do
     with {:ok, query, meter} <-
-           run_prepare(conn, query, meter, Keyword.put(opts, :prepare_execute, true)),
+           run_prepare(conn, query, meter, Keyword.put(opts, :prepare_then, :execute)),
          {:ok, params, meter} <- encode(conn, query, params, meter, opts) do
       run_execute(conn, query, params, meter, opts)
     end
@@ -2037,7 +2038,8 @@ defmodule DBConnection do
   end
 
   defp run_prepare_declare(conn, query, params, meter, opts) do
-    with {:ok, query, meter} <- prepare(conn, query, meter, opts),
+    with {:ok, query, meter} <-
+           prepare(conn, query, meter, Keyword.put(opts, :prepare_then, :declare)),
          {:ok, query, meter} <- describe(conn, query, meter, opts),
          {:ok, params, meter} <- encode(conn, query, params, meter, opts),
          {:ok, query, cursor, meter} <- run_declare(conn, query, params, meter, opts) do

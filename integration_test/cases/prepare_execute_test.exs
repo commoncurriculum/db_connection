@@ -30,7 +30,7 @@ defmodule PrepareExecuteTest do
              connect: [_],
              handle_prepare: [%Q{}, _, :state],
              handle_execute: [%Q{state: :prepared}, [:param], _, :new_state],
-             handle_prepare: [%Q{}, [{:prepare_execute, true}, {:key, :value} | _], :newer_state],
+             handle_prepare: [%Q{}, [{:prepare_then, :execute}, {:key, :value} | _], :newer_state],
              handle_execute: [%Q{state: :prepared}, [:param], _, :newest_state]
            ] = A.record(agent)
   end

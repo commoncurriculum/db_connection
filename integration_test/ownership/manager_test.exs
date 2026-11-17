@@ -541,6 +541,32 @@ defmodule ManagerTest do
     assert_receive :post_checkout
   end
 
+  test "a checkout through a replaced connection names the pool's own connection module" do
+    {:ok, pool, opts} = start_pool(label: :sandboxed)
+    test = self()
+    id = make_ref()
+
+    :telemetry.attach(
+      id,
+      [:db_connection, :checkout],
+      fn _event, _measurements, metadata, _ ->
+        if metadata.pool == pool, do: send(test, {:checkout, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(id) end)
+
+    post_checkout = fn TestConnection, :state -> {:ok, Unknown, :unknown} end
+    pre_checkin = fn {:stop, _}, Unknown, :unknown -> {:ok, TestConnection, :state} end
+    checkout = [post_checkout: post_checkout, pre_checkin: pre_checkin]
+    assert Ownership.ownership_checkout(pool, checkout) == :ok
+
+    assert_raise UndefinedFunctionError, fn -> P.run(pool, fn _ -> :ok end, opts) end
+
+    assert_receive {:checkout, %{label: :sandboxed, connection_module: TestConnection}}
+  end
+
   test "disconnects on bad post_checkout" do
     stack = [
       {:ok, :state},

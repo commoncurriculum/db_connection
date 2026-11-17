@@ -31,11 +31,11 @@ defmodule TelemetryTest do
 
     assert {:ok, %Q{}, %R{}} = P.execute(pool, %Q{}, [:param])
 
-    assert_receive {[:db_connection, :checkout], %{wait_time: wait_time, idle_time: idle_time},
+    assert_receive {[:db_connection, :checkout], %{wait_time: wait_time} = measurements,
                     %{pool: ^pool, label: :my_pool, connection_module: TestConnection}}
 
     assert wait_time >= 0
-    assert is_nil(idle_time) or idle_time >= 0
+    assert Map.keys(measurements) == [:wait_time]
 
     assert_receive {[:db_connection, :checkin], %{use_time: use_time},
                     %{pool: ^pool, label: :my_pool, connection_module: TestConnection}}
@@ -123,7 +123,7 @@ defmodule TelemetryTest do
     assert_receive {[:db_connection, :checkout], _, %{connection_module: TestConnection} = ok}
     refute Map.has_key?(ok, :error)
 
-    assert_receive {[:db_connection, :checkout], %{wait_time: wait_time, idle_time: nil},
+    assert_receive {[:db_connection, :checkout], %{wait_time: wait_time},
                     %{
                       label: :my_pool,
                       connection_module: TestConnection,
@@ -132,5 +132,73 @@ defmodule TelemetryTest do
 
     assert wait_time > 0
     assert_receive {[:db_connection, :checkin], _, _}
+  end
+
+  test "a checkout whose deadline passes while queued is a queue timeout" do
+    {:ok, agent} = A.start_link([{:ok, :state} | List.duplicate({:idle, :state}, 4)])
+    {:ok, pool} = P.start_link(agent: agent, parent: self(), queue_target: 1_000)
+    attach(pool)
+    test = self()
+
+    Task.start(fn ->
+      Process.put(:agent, agent)
+
+      P.run(pool, fn _conn ->
+        send(test, :holding)
+        Process.sleep(50)
+      end)
+    end)
+
+    assert_receive :holding
+
+    assert_raise DBConnection.ConnectionError, ~r/deadline reached while in queue/, fn ->
+      P.run(pool, fn _conn -> flunk("got connection") end, timeout: 10)
+    end
+
+    assert_receive {[:db_connection, :checkout], _,
+                    %{error: %DBConnection.ConnectionError{reason: :queue_timeout}}}
+  end
+
+  test "after_connect checks out with the pool's label and connection module" do
+    {:ok, agent} = A.start_link([{:ok, :state}, {:idle, :state}])
+    test = self()
+    id = make_ref()
+
+    :telemetry.attach(
+      id,
+      [:db_connection, :checkout],
+      fn _event, _measurements, metadata, _ ->
+        if metadata.label == :after_connect_pool, do: send(test, {:checkout, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(id) end)
+
+    {:ok, _pool} =
+      P.start_link(
+        agent: agent,
+        parent: self(),
+        label: :after_connect_pool,
+        after_connect: fn _conn -> send(test, :after_connect) end
+      )
+
+    assert_receive :after_connect
+    assert_receive {:checkout, %{connection_module: TestConnection}}
+  end
+
+  test "a checkout from a pool that is not running is a checkout with its error" do
+    {:ok, agent} = A.start_link([{:ok, :state}])
+    {:ok, pool} = P.start_link(agent: agent, parent: self())
+    attach(pool)
+    Process.unlink(pool)
+    ref = Process.monitor(pool)
+    Process.exit(pool, :kill)
+    assert_receive {:DOWN, ^ref, _, _, _}
+
+    catch_exit(P.run(pool, fn _conn -> flunk("got connection") end))
+
+    assert_receive {[:db_connection, :checkout], %{wait_time: _},
+                    %{pool: ^pool, label: nil, connection_module: nil, error: _}}
   end
 end

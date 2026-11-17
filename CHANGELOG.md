@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-* Emit `[:db_connection, :checkout]` with the wait and idle time, and `[:db_connection, :checkin]` with the use time, from the process that holds the connection
+* Emit `[:db_connection, :checkout]` with the wait time (and the error when the checkout failed), and `[:db_connection, :checkin]` with the use time, from the process that holds the connection
 * Add the `:label` start option, given in those events' metadata
+* A checkout whose deadline passes while it waits in the queue fails with `reason: :queue_timeout`
 
 ## v2.10.2 (2026-07-06)
 

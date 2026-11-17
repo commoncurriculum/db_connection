@@ -14,7 +14,7 @@ defmodule DBConnection.Holder do
     :state,
     :lock,
     :connected_at,
-    label: nil,
+    identity: nil,
     deadline: nil,
     status: :ok
   ])
@@ -27,9 +27,9 @@ defmodule DBConnection.Holder do
   ## Holder API
 
   @spec new(pid, reference, module, term) :: t
-  @spec new(pid, reference, module, term, term) :: t
-  @spec new(pid, reference, module, term, term, integer) :: t
-  def new(pool, ref, mod, state, label \\ nil, connected_at \\ System.monotonic_time()) do
+  @spec new(pid, reference, module, term, {term, module} | nil) :: t
+  @spec new(pid, reference, module, term, {term, module} | nil, integer) :: t
+  def new(pool, ref, mod, state, identity \\ nil, connected_at \\ System.monotonic_time()) do
     # Insert before setting heir so that pool can't receive empty table
     holder = :ets.new(__MODULE__, [:public, :ordered_set, decentralized_counters: true])
 
@@ -39,7 +39,7 @@ defmodule DBConnection.Holder do
         module: mod,
         state: state,
         connected_at: connected_at,
-        label: label
+        identity: identity || {nil, mod}
       )
 
     true = :ets.insert_new(holder, conn)
@@ -49,10 +49,10 @@ defmodule DBConnection.Holder do
   end
 
   @spec update(pid, reference, module, term) :: {:ok, t} | :error
-  @spec update(pid, reference, module, term, term) :: {:ok, t} | :error
-  @spec update(pid, reference, module, term, term, integer) :: {:ok, t} | :error
-  def update(pool, ref, mod, state, label \\ nil, connected_at \\ System.monotonic_time()) do
-    holder = new(pool, ref, mod, state, label, connected_at)
+  @spec update(pid, reference, module, term, {term, module} | nil) :: {:ok, t} | :error
+  @spec update(pid, reference, module, term, {term, module} | nil, integer) :: {:ok, t} | :error
+  def update(pool, ref, mod, state, identity \\ nil, connected_at \\ System.monotonic_time()) do
+    holder = new(pool, ref, mod, state, identity, connected_at)
 
     try do
       :ets.give_away(holder, pool, {:checkin, ref, System.monotonic_time()})
@@ -180,11 +180,11 @@ defmodule DBConnection.Holder do
 
   ## Pool state helpers API (invoked by callers)
 
-  @spec label(pool_ref :: any) :: term
-  def label(pool_ref(holder: holder)) do
-    :ets.lookup_element(holder, :conn, conn(:label) + 1)
+  @spec identity(pool_ref :: any) :: {label :: term, module}
+  def identity(pool_ref(holder: holder)) do
+    :ets.lookup_element(holder, :conn, conn(:identity) + 1)
   rescue
-    ArgumentError -> nil
+    ArgumentError -> {nil, nil}
   end
 
   @spec put_state(pool_ref :: any, term) :: :ok
@@ -371,7 +371,8 @@ defmodule DBConnection.Holder do
 
   defp checkout_deadline_error do
     DBConnection.ConnectionError.exception(
-      "connection not available because deadline reached while in queue"
+      "connection not available because deadline reached while in queue",
+      :queue_timeout
     )
   end
 

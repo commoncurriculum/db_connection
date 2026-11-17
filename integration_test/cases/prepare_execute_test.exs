@@ -549,18 +549,20 @@ defmodule PrepareExecuteTest do
       P.prepare_execute(pool, %Q{}, [:param], describe: describe)
     end
 
-    encode = fn [:param] -> raise "oops" end
+    encode = fn [:param] -> throw(:oops) end
 
-    assert_raise RuntimeError, "oops", fn ->
-      P.prepare_execute(pool, %Q{}, [:param], encode: encode)
-    end
+    assert catch_throw(P.prepare_execute(pool, %Q{}, [:param], encode: encode)) == :oops
 
     assert [
              connect: [_],
              handle_prepare: [%Q{}, _, :state],
-             handle_close: [%Q{}, _, :new_state],
-             handle_prepare: [%Q{}, _, :newer_state],
-             handle_close: [%Q{}, _, :newest_state]
+             handle_close: [%Q{}, describe_close_opts, :new_state],
+             handle_prepare: [%Q{}, prepare_opts, :newer_state],
+             handle_close: [%Q{}, encode_close_opts, :newest_state]
            ] = A.record(agent)
+
+    assert %RuntimeError{message: "oops"} = describe_close_opts[:raised]
+    assert %ErlangError{original: {:throw, :oops}} = encode_close_opts[:raised]
+    refute Keyword.has_key?(prepare_opts, :raised)
   end
 end

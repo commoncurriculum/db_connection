@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+* Emit `[:db_connection, :checkout]` with the wait and idle time, and `[:db_connection, :checkin]` with the use time, from the process that holds the connection
+* Add the `:label` start option, given in those events' metadata
+
 ## v2.10.2 (2026-07-06)
 
 * Ensure pool connections terminate synchronously when the pool manager shuts down

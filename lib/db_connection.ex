@@ -380,7 +380,7 @@ defmodule DBConnection do
   @callback disconnect(err :: Exception.t(), state :: any) :: :ok
 
   @connection_module_key :connection_module
-  @pool_label_key :db_connection_pool_label
+  @pool_identity_key :db_connection_pool_identity
   @checkout_retries 3
 
   @doc """
@@ -622,9 +622,6 @@ defmodule DBConnection do
   Measurements, in `:native` time units:
 
     * `:wait_time` - How long the caller waited for the pool to give it a connection
-
-    * `:idle_time` - How long the connection sat in the pool before this checkout,
-      or `nil` when the pool does not know
 
   Metadata:
 
@@ -1350,7 +1347,7 @@ defmodule DBConnection do
   @doc false
   def register_as_pool(conn_module, label \\ nil) do
     Process.put(@connection_module_key, conn_module)
-    Process.put(@pool_label_key, label)
+    Process.put(@pool_identity_key, {label, conn_module})
   end
 
   @doc """
@@ -1401,18 +1398,17 @@ defmodule DBConnection do
     catch
       kind, reason ->
         stack = __STACKTRACE__
+        checkout_failed(pool, checkout, Exception.normalize(kind, reason, stack))
         {kind, reason, stack, past_event(meter, :checkout, checkout)}
     else
-      {:ok, pool_ref, conn_mod, checkin, _conn_state} ->
+      {:ok, pool_ref, _conn_mod, checkin, _conn_state} ->
         checked_out_at = System.monotonic_time()
-        metadata = %{pool: pool, label: Holder.label(pool_ref), connection_module: conn_mod}
+        {label, driver} = Holder.identity(pool_ref)
+        metadata = %{pool: pool, label: label, connection_module: driver}
 
         :telemetry.execute(
           [:db_connection, :checkout],
-          %{
-            wait_time: checked_out_at - checkout,
-            idle_time: checkin && max(checked_out_at - checkin, 0)
-          },
+          %{wait_time: checked_out_at - checkout},
           metadata
         )
 
@@ -1427,23 +1423,26 @@ defmodule DBConnection do
         {:ok, conn, meter}
 
       {:error, err} ->
-        {label, conn_mod} = pool_identity(pool)
-
-        :telemetry.execute(
-          [:db_connection, :checkout],
-          %{wait_time: System.monotonic_time() - checkout, idle_time: nil},
-          %{pool: pool, label: label, connection_module: conn_mod, error: err}
-        )
-
+        checkout_failed(pool, checkout, err)
         {:error, err, past_event(meter, :checkout, checkout)}
     end
   end
 
+  defp checkout_failed(pool, checkout, error) do
+    {label, driver} = pool_identity(pool)
+
+    :telemetry.execute(
+      [:db_connection, :checkout],
+      %{wait_time: System.monotonic_time() - checkout},
+      %{pool: pool, label: label, connection_module: driver, error: error}
+    )
+  end
+
   defp pool_identity(pool) do
     with pid when is_pid(pid) <- pool_pid(pool),
-         {:dictionary, dictionary} <- Process.info(pid, :dictionary) do
-      {List.keyfind(dictionary, @pool_label_key, 0, {nil, nil}) |> elem(1),
-       List.keyfind(dictionary, @connection_module_key, 0, {nil, nil}) |> elem(1)}
+         {:dictionary, dictionary} <- Process.info(pid, :dictionary),
+         {@pool_identity_key, identity} <- List.keyfind(dictionary, @pool_identity_key, 0) do
+      identity
     else
       _ -> {nil, nil}
     end

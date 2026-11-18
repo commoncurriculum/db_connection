@@ -62,22 +62,36 @@ defmodule TelemetryTest do
     attach(pool)
     test = self()
 
-    Task.start(fn ->
-      Process.put(:agent, agent)
+    {:ok, holder} =
+      Task.start(fn ->
+        Process.put(:agent, agent)
 
-      P.run(pool, fn _conn ->
-        send(test, :holding)
-        Process.sleep(50)
+        P.run(pool, fn _conn ->
+          send(test, :holding)
+          assert_receive :release, 5_000
+        end)
       end)
-    end)
 
     assert_receive :holding
-    P.run(pool, fn _conn -> :ok end)
-
     assert_receive {[:db_connection, :checkout], _, _}
+
+    {:ok, _waiter} =
+      Task.start(fn ->
+        Process.put(:agent, agent)
+        P.run(pool, fn _conn -> :ok end)
+      end)
+
+    queued? = fn ->
+      pool |> P.get_connection_metrics() |> Enum.any?(&(&1.checkout_queue_length > 0))
+    end
+
+    assert Enum.any?(1..500, fn _ -> queued?.() || (Process.sleep(1) && false) end)
+    Process.sleep(50)
+    send(holder, :release)
+
     assert_receive {[:db_connection, :checkin], _, _}
     assert_receive {[:db_connection, :checkout], %{wait_time: wait_time}, _}
-    assert System.convert_time_unit(wait_time, :native, :millisecond) >= 40
+    assert System.convert_time_unit(wait_time, :native, :millisecond) >= 50
   end
 
   test "a transaction is one checkout and one checkin" do

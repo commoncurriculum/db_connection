@@ -97,6 +97,11 @@ defmodule TestConnection do
     TestAgent.eval(:disconnect, [err, state])
   end
 
+  def discard(err, state) do
+    send(self(), {:discarded, err, state})
+    :ok
+  end
+
   def checkout(state) do
     {:ok, state}
   end

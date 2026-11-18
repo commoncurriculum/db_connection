@@ -187,6 +187,8 @@ defmodule ClientTest do
                assert {:error, %DBConnection.ConnectionError{message: ^message}} =
                         P.execute(conn, %Q{}, [:first])
 
+               assert_received {:discarded, %DBConnection.ConnectionError{}, :new_state}
+
                spawn_link(fn ->
                  _ = Process.put(:agent, agent)
                  assert P.run(pool, fn _ -> :result end) == :result

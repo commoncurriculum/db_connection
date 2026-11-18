@@ -379,6 +379,17 @@ defmodule DBConnection do
   """
   @callback disconnect(err :: Exception.t(), state :: any) :: :ok
 
+  @doc """
+  Called in the client process with the state a callback returned after the
+  pool had already closed the connection, such as when the checkout's deadline
+  passed while the callback ran. That state can never reach `disconnect/2`, so
+  this callback releases what it alone holds. It must not use the socket, which
+  the connection process has closed. Optional.
+  """
+  @callback discard(err :: Exception.t(), state :: any) :: :ok
+
+  @optional_callbacks discard: 2
+
   @connection_module_key :connection_module
   @pool_identity_key :db_connection_pool_identity
   @checkout_retries 3

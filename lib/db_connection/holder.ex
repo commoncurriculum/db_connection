@@ -422,12 +422,20 @@ defmodule DBConnection.Holder do
           result
         rescue
           ArgumentError ->
+            discard(module, state)
             augment_disconnect(result)
         end
 
       # If it is not a tuple, we just return it as is so we raise bad return.
       result ->
         result
+    end
+  end
+
+  defp discard(module, state) do
+    if function_exported?(module, :discard, 2) do
+      msg = "connection is closed because the pool closed it while the client was using it"
+      module.discard(DBConnection.ConnectionError.exception(msg), state)
     end
   end
 

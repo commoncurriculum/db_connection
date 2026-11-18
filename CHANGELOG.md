@@ -6,6 +6,7 @@
 * Add the `:label` start option, given in those events' metadata
 * A checkout whose deadline passes while it waits in the queue fails with `reason: :queue_timeout`
 * `handle_close` gets the exception under `:raised` when describing or encoding a prepared query raised
+* Add the optional `discard/2` callback, called in the client with a state the pool can no longer receive
 * `handle_prepare` gets `prepare_then: :execute` or `prepare_then: :declare` when the query is executed, or declared as a cursor, right after it is prepared
 
 ## v2.10.2 (2026-07-06)

@@ -371,8 +371,7 @@ defmodule DBConnection.Holder do
 
   defp checkout_deadline_error do
     DBConnection.ConnectionError.exception(
-      "connection not available because deadline reached while in queue",
-      :queue_timeout
+      "connection not available because deadline reached while in queue"
     )
   end
 

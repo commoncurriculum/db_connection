@@ -134,7 +134,7 @@ defmodule TelemetryTest do
     assert_receive {[:db_connection, :checkin], _, _}
   end
 
-  test "a checkout whose deadline passes while queued is a queue timeout" do
+  test "a checkout whose deadline passes while queued is a checkout with its error" do
     {:ok, agent} =
       A.start_link([{:ok, :state}, {:idle, :state}, {:idle, :state}, :ok, {:ok, :state}])
 
@@ -158,7 +158,9 @@ defmodule TelemetryTest do
     end
 
     assert_receive {[:db_connection, :checkout], _,
-                    %{error: %DBConnection.ConnectionError{reason: :queue_timeout}}}
+                    %{error: %DBConnection.ConnectionError{reason: :error, message: message}}}
+
+    assert message =~ "deadline reached while in queue"
   end
 
   test "after_connect checks out with the pool's label and connection module" do

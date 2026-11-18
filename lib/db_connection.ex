@@ -657,6 +657,22 @@ defmodule DBConnection do
 
   Metadata: `:pool`, `:label` and `:connection_module`, as in the checkout event.
 
+  A `[:db_connection, :pool, :init]` event is published when a
+  `DBConnection.ConnectionPool` starts, from the pool process. A handler can keep the pool
+  to read `DBConnection.get_connection_metrics/2` from it until the pool exits.
+
+  Measurements:
+
+    * `:pool_size` - The pool's `:pool_size` start option
+
+  Metadata:
+
+    * `:pool` - The pool's pid
+
+    * `:label` - The pool's `:label` start option, or `nil`
+
+    * `:connection_module` - The `DBConnection` callback module
+
   You may also consume `[:db_connection, :connected]` and `[:db_connection, :disconnected]`
   events by spawning a `DBConnection.TelemetryListener` process that subscribes to the pool
   and emits them in a robust manner.

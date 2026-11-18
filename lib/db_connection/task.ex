@@ -8,7 +8,17 @@ defmodule DBConnection.Task do
     arg = [fun, self(), %DBConnection.SensitiveData{data: opts}]
     {:ok, pid} = Task.Supervisor.start_child(@name, __MODULE__, :init, arg)
     ref = Process.monitor(pid)
-    _ = DBConnection.Holder.update(pid, ref, mod, state, {opts[:label], mod})
+
+    _ =
+      DBConnection.Holder.update(
+        pid,
+        ref,
+        mod,
+        state,
+        System.monotonic_time(),
+        {opts[:label], mod}
+      )
+
     {pid, ref}
   end
 

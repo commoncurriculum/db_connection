@@ -7,6 +7,7 @@ defmodule DBConnection.Holder do
   @queue true
   @timeout 15000
   @time_unit 1000
+  @deadline_message "connection not available because deadline reached while in queue"
 
   Record.defrecord(:conn, [
     :connection,
@@ -370,10 +371,17 @@ defmodule DBConnection.Holder do
   end
 
   defp checkout_deadline_error do
-    DBConnection.ConnectionError.exception(
-      "connection not available because deadline reached while in queue"
-    )
+    DBConnection.ConnectionError.exception(@deadline_message)
   end
+
+  @doc false
+  @spec timed_out?(Exception.t()) :: boolean
+  def timed_out?(%DBConnection.ConnectionError{reason: :queue_timeout}), do: true
+
+  def timed_out?(%DBConnection.ConnectionError{message: message}),
+    do: String.ends_with?(message, @deadline_message)
+
+  def timed_out?(_error), do: false
 
   defp deadline_reached?(nil), do: false
   defp deadline_reached?(timeout), do: timeout <= System.monotonic_time(@time_unit)

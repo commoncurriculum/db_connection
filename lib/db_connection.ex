@@ -645,6 +645,9 @@ defmodule DBConnection do
     * `:error` - Only when the checkout failed, such as when the request was
       dropped from the queue: the exception. There is no checkin event then.
 
+    * `:timed_out` - Only when the checkout failed: `true` when the caller timed out waiting
+      for a connection, whether the pool dropped it from the queue or its deadline passed
+
   A `[:db_connection, :checkin]` event is published when the process that
   checked out a connection gives it back, from that process.
 
@@ -1440,7 +1443,13 @@ defmodule DBConnection do
     :telemetry.execute(
       [:db_connection, :checkout],
       %{wait_time: System.monotonic_time() - checkout},
-      %{pool: pool, label: label, connection_module: driver, error: error}
+      %{
+        pool: pool,
+        label: label,
+        connection_module: driver,
+        error: error,
+        timed_out: Holder.timed_out?(error)
+      }
     )
   end
 

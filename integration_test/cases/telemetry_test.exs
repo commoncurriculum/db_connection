@@ -100,7 +100,7 @@ defmodule TelemetryTest do
     refute_received {[:db_connection, _], _, _}
   end
 
-  test "a checkout that times out in the queue is a checkout with its error" do
+  test "a checkout that times out in the queue is a timed-out checkout with its error" do
     {:ok, agent} = A.start_link([{:ok, :state}, {:idle, :state}, {:idle, :state}])
 
     {:ok, pool} =
@@ -127,14 +127,15 @@ defmodule TelemetryTest do
                     %{
                       label: :my_pool,
                       connection_module: TestConnection,
-                      error: %DBConnection.ConnectionError{reason: :queue_timeout}
+                      error: %DBConnection.ConnectionError{reason: :queue_timeout},
+                      timed_out: true
                     }}
 
     assert wait_time > 0
     assert_receive {[:db_connection, :checkin], _, _}
   end
 
-  test "a checkout whose deadline passes while queued is a checkout with its error" do
+  test "a checkout whose deadline passes while queued is a timed-out checkout with its error" do
     {:ok, agent} =
       A.start_link([{:ok, :state}, {:idle, :state}, {:idle, :state}, :ok, {:ok, :state}])
 
@@ -158,7 +159,10 @@ defmodule TelemetryTest do
     end
 
     assert_receive {[:db_connection, :checkout], _,
-                    %{error: %DBConnection.ConnectionError{reason: :error, message: message}}}
+                    %{
+                      error: %DBConnection.ConnectionError{reason: :error, message: message},
+                      timed_out: true
+                    }}
 
     assert message =~ "deadline reached while in queue"
   end
@@ -214,6 +218,6 @@ defmodule TelemetryTest do
     catch_exit(P.run(pool, fn _conn -> flunk("got connection") end))
 
     assert_receive {[:db_connection, :checkout], %{wait_time: _},
-                    %{pool: ^pool, label: nil, connection_module: nil, error: _}}
+                    %{pool: ^pool, label: nil, connection_module: nil, error: _, timed_out: false}}
   end
 end

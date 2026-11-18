@@ -110,7 +110,14 @@ defmodule DBConnection.Ownership.Proxy do
         case post_checkout.(original_mod, conn_state) do
           {:ok, conn_mod, conn_state} ->
             holder =
-              Holder.new(self(), owner_ref, conn_mod, conn_state, Holder.identity(pool_ref))
+              Holder.new(
+                self(),
+                owner_ref,
+                conn_mod,
+                conn_state,
+                System.monotonic_time(),
+                Holder.identity(pool_ref)
+              )
 
             state = %{state | pool_ref: pool_ref, holder: holder, mod: original_mod}
             checkout(from, state)

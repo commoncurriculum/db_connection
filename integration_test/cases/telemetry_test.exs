@@ -57,27 +57,61 @@ defmodule TelemetryTest do
   end
 
   test "wait time covers the time spent queued for a busy connection" do
-    {:ok, agent} = A.start_link([{:ok, :state} | List.duplicate({:idle, :state}, 4)])
-    {:ok, pool} = P.start_link(agent: agent, parent: self())
-    attach(pool)
     test = self()
+    label = {:wait_time_test, make_ref()}
 
-    Task.start(fn ->
-      Process.put(:agent, agent)
+    :telemetry.attach(
+      label,
+      [:db_connection, :pool, :init],
+      fn
+        _, _, %{label: ^label, pool: connection_pool}, _ ->
+          send(test, {:connection_pool, connection_pool})
 
-      P.run(pool, fn _conn ->
-        send(test, :holding)
-        Process.sleep(50)
+        _, _, _, _ ->
+          :ok
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(label) end)
+
+    {:ok, agent} = A.start_link([{:ok, :state} | List.duplicate({:idle, :state}, 4)])
+    {:ok, pool} = P.start_link(agent: agent, parent: self(), label: label)
+    assert_receive {:connection_pool, connection_pool}
+    attach(pool)
+
+    {:ok, holder} =
+      Task.start(fn ->
+        Process.put(:agent, agent)
+
+        P.run(pool, fn _conn ->
+          send(test, :holding)
+          assert_receive :release, 5_000
+        end)
       end)
-    end)
 
     assert_receive :holding
-    P.run(pool, fn _conn -> :ok end)
-
     assert_receive {[:db_connection, :checkout], _, _}
+
+    {:ok, _waiter} =
+      Task.start(fn ->
+        Process.put(:agent, agent)
+        P.run(pool, fn _conn -> :ok end)
+      end)
+
+    queued? = fn ->
+      connection_pool
+      |> DBConnection.ConnectionPool.get_connection_metrics()
+      |> Enum.any?(&(&1.checkout_queue_length > 0))
+    end
+
+    assert Enum.any?(1..500, fn _ -> queued?.() || (Process.sleep(1) && false) end)
+    Process.sleep(50)
+    send(holder, :release)
+
     assert_receive {[:db_connection, :checkin], _, _}
     assert_receive {[:db_connection, :checkout], %{wait_time: wait_time}, _}
-    assert System.convert_time_unit(wait_time, :native, :millisecond) >= 40
+    assert System.convert_time_unit(wait_time, :native, :millisecond) >= 50
   end
 
   test "a transaction is one checkout and one checkin" do

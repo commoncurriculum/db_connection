@@ -57,10 +57,28 @@ defmodule TelemetryTest do
   end
 
   test "wait time covers the time spent queued for a busy connection" do
-    {:ok, agent} = A.start_link([{:ok, :state} | List.duplicate({:idle, :state}, 4)])
-    {:ok, pool} = P.start_link(agent: agent, parent: self())
-    attach(pool)
     test = self()
+    label = {:wait_time_test, make_ref()}
+
+    :telemetry.attach(
+      label,
+      [:db_connection, :pool, :init],
+      fn
+        _, _, %{label: ^label, pool: connection_pool}, _ ->
+          send(test, {:connection_pool, connection_pool})
+
+        _, _, _, _ ->
+          :ok
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(label) end)
+
+    {:ok, agent} = A.start_link([{:ok, :state} | List.duplicate({:idle, :state}, 4)])
+    {:ok, pool} = P.start_link(agent: agent, parent: self(), label: label)
+    assert_receive {:connection_pool, connection_pool}
+    attach(pool)
 
     {:ok, holder} =
       Task.start(fn ->
@@ -82,7 +100,9 @@ defmodule TelemetryTest do
       end)
 
     queued? = fn ->
-      pool |> P.get_connection_metrics() |> Enum.any?(&(&1.checkout_queue_length > 0))
+      connection_pool
+      |> DBConnection.ConnectionPool.get_connection_metrics()
+      |> Enum.any?(&(&1.checkout_queue_length > 0))
     end
 
     assert Enum.any?(1..500, fn _ -> queued?.() || (Process.sleep(1) && false) end)

@@ -189,6 +189,17 @@ defmodule TelemetryTest do
     assert_receive {:checkout, %{connection_module: TestConnection}}
   end
 
+  test "a checkout from a pool on an unreachable node fails with the pool's error" do
+    pool = :erlang.binary_to_term(<<131, 88, 100, 0, 9, "a@nowhere", 0::32, 0::32, 0::32>>)
+    attach(pool)
+
+    assert {{:badnode, :a@nowhere}, _} =
+             catch_exit(P.run(pool, fn _conn -> flunk("got connection") end))
+
+    assert_receive {[:db_connection, :checkout], %{wait_time: _},
+                    %{pool: ^pool, label: nil, connection_module: nil, error: _}}
+  end
+
   test "a checkout from a pool that is not running is a checkout with its error" do
     {:ok, agent} = A.start_link([{:ok, :state}, :ok])
     {:ok, pool} = P.start_link(agent: agent, parent: self())

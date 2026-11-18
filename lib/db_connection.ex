@@ -1445,7 +1445,7 @@ defmodule DBConnection do
   end
 
   defp pool_identity(pool) do
-    with pid when is_pid(pid) <- pool_pid(pool),
+    with pid when is_pid(pid) and node(pid) == node() <- pool_pid(pool),
          {:dictionary, dictionary} <- Process.info(pid, :dictionary),
          {@pool_identity_key, identity} <- List.keyfind(dictionary, @pool_identity_key, 0) do
       identity

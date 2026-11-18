@@ -50,6 +50,12 @@ defmodule DBConnection.ConnectionPool do
     Process.flag(:trap_exit, true)
     DBConnection.register_as_pool(mod, opts[:label])
 
+    :telemetry.execute(
+      [:db_connection, :pool, :init],
+      %{pool_size: Keyword.get(opts, :pool_size, 1)},
+      %{pool: self(), label: opts[:label], connection_module: mod}
+    )
+
     queue = :ets.new(__MODULE__.Queue, [:protected, :ordered_set, decentralized_counters: true])
 
     max_lifetime =

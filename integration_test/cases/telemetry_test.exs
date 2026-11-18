@@ -220,4 +220,30 @@ defmodule TelemetryTest do
     assert_receive {[:db_connection, :checkout], %{wait_time: _},
                     %{pool: ^pool, label: nil, connection_module: nil, error: _, timed_out: false}}
   end
+
+  test "a starting pool reports its pid, size and label, and the pid serves its connection metrics" do
+    test = self()
+    id = make_ref()
+    label = {:pool_init_test, id}
+
+    :telemetry.attach(
+      id,
+      [:db_connection, :pool, :init],
+      fn _, measurements, metadata, _ ->
+        if metadata.label == label, do: send(test, {:pool_init, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(id) end)
+
+    {:ok, agent} = A.start_link([{:ok, :state}])
+    {:ok, _pool} = P.start_link(agent: agent, parent: self(), label: label, pool_size: 1)
+
+    assert_receive {:pool_init, %{pool_size: 1},
+                    %{pool: pool_pid, label: ^label, connection_module: TestConnection}}
+
+    assert [%{source: {:pool, ^pool_pid}}] =
+             DBConnection.ConnectionPool.get_connection_metrics(pool_pid)
+  end
 end

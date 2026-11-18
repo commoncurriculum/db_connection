@@ -92,7 +92,7 @@ defmodule DBConnection do
 
   require Holder
 
-  defstruct [:pool_ref, :conn_ref, :conn_mode, :checked_out_at, :telemetry_metadata]
+  defstruct [:pool_ref, :conn_ref, :conn_mode]
 
   defmodule EncodeError do
     defexception [:message]
@@ -1060,7 +1060,7 @@ defmodule DBConnection do
               )
 
             disconnect(conn, err)
-            checkin(conn)
+            checked_in(conn)
             raise err
         end
 
@@ -1412,13 +1412,8 @@ defmodule DBConnection do
           metadata
         )
 
-        conn = %DBConnection{
-          pool_ref: pool_ref,
-          conn_ref: make_ref(),
-          checked_out_at: checked_out_at,
-          telemetry_metadata: metadata
-        }
-
+        pool_ref = Holder.pool_ref(pool_ref, checkout: {checked_out_at, metadata})
+        conn = %DBConnection{pool_ref: pool_ref, conn_ref: make_ref()}
         meter = meter |> past_event(:checkin, checkin) |> past_event(:checkout, checkout)
         {:ok, conn, meter}
 
@@ -1448,16 +1443,12 @@ defmodule DBConnection do
     end
   end
 
-  defp checkin(%DBConnection{} = conn) do
-    %DBConnection{
-      pool_ref: pool_ref,
-      checked_out_at: checked_out_at,
-      telemetry_metadata: metadata
-    } =
-      conn
-
+  defp checkin(%DBConnection{pool_ref: pool_ref} = conn) do
     Holder.checkin(pool_ref)
+    checked_in(conn)
+  end
 
+  defp checked_in(%DBConnection{pool_ref: Holder.pool_ref(checkout: {checked_out_at, metadata})}) do
     :telemetry.execute(
       [:db_connection, :checkin],
       %{use_time: System.monotonic_time() - checked_out_at},

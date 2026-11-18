@@ -19,7 +19,7 @@ defmodule DBConnection.Holder do
     status: :ok
   ])
 
-  Record.defrecord(:pool_ref, [:pool, :reference, :deadline, :holder, :lock])
+  Record.defrecord(:pool_ref, [:pool, :reference, :deadline, :holder, :lock, :checkout])
 
   @type t :: :ets.tid()
   @type checkin_time :: non_neg_integer() | nil

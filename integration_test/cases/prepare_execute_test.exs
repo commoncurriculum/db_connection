@@ -535,7 +535,9 @@ defmodule PrepareExecuteTest do
       {:ok, %Q{}, :new_state},
       {:ok, %R{}, :newer_state},
       {:ok, %Q{}, :newest_state},
-      {:ok, %R{}, :state2}
+      {:ok, %R{}, :state2},
+      {:ok, %Q{}, :state3},
+      {:ok, %R{}, :state4}
     ]
 
     {:ok, agent} = A.start_link(stack)
@@ -549,6 +551,12 @@ defmodule PrepareExecuteTest do
       P.prepare_execute(pool, %Q{}, [:param], describe: describe)
     end
 
+    encode = fn [:param] -> raise "oops" end
+
+    assert_raise RuntimeError, "oops", fn ->
+      P.prepare_execute(pool, %Q{}, [:param], encode: encode)
+    end
+
     encode = fn [:param] -> throw(:oops) end
 
     assert catch_throw(P.prepare_execute(pool, %Q{}, [:param], encode: encode)) == :oops
@@ -558,11 +566,14 @@ defmodule PrepareExecuteTest do
              handle_prepare: [%Q{}, _, :state],
              handle_close: [%Q{}, describe_close_opts, :new_state],
              handle_prepare: [%Q{}, prepare_opts, :newer_state],
-             handle_close: [%Q{}, encode_close_opts, :newest_state]
+             handle_close: [%Q{}, encode_raise_close_opts, :newest_state],
+             handle_prepare: [%Q{}, _, :state2],
+             handle_close: [%Q{}, encode_throw_close_opts, :state3]
            ] = A.record(agent)
 
     assert %RuntimeError{message: "oops"} = describe_close_opts[:raised]
-    assert %ErlangError{original: {:throw, :oops}} = encode_close_opts[:raised]
+    assert %RuntimeError{message: "oops"} = encode_raise_close_opts[:raised]
+    assert %ErlangError{original: {:throw, :oops}} = encode_throw_close_opts[:raised]
     refute Keyword.has_key?(prepare_opts, :raised)
   end
 end

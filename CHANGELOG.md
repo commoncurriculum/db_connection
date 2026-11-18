@@ -2,9 +2,11 @@
 
 ## Unreleased
 
-* Emit `[:db_connection, :checkout]` with the wait time (and the error when the checkout failed), and `[:db_connection, :checkin]` with the use time, from the process that holds the connection
+* Emit `[:db_connection, :checkout]` with the wait time (and the error when the checkout failed or exited), and `[:db_connection, :checkin]` with the use time, from the process that holds the connection
 * Add the `:label` start option, given in those events' metadata
 * A checkout whose deadline passes while it waits in the queue fails with `reason: :queue_timeout`
+* `handle_close` gets the exception under `:raised` when describing or encoding a prepared query raised
+* `handle_prepare` gets `prepare_then: :execute` or `prepare_then: :declare` when the query is executed, or declared as a cursor, right after it is prepared
 
 ## v2.10.2 (2026-07-06)
 

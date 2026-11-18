@@ -135,7 +135,9 @@ defmodule TelemetryTest do
   end
 
   test "a checkout whose deadline passes while queued is a queue timeout" do
-    {:ok, agent} = A.start_link([{:ok, :state} | List.duplicate({:idle, :state}, 4)])
+    {:ok, agent} =
+      A.start_link([{:ok, :state}, {:idle, :state}, {:idle, :state}, :ok, {:ok, :state}])
+
     {:ok, pool} = P.start_link(agent: agent, parent: self(), queue_target: 1_000)
     attach(pool)
     test = self()
@@ -160,7 +162,7 @@ defmodule TelemetryTest do
   end
 
   test "after_connect checks out with the pool's label and connection module" do
-    {:ok, agent} = A.start_link([{:ok, :state}, {:idle, :state}])
+    {:ok, agent} = A.start_link([{:ok, :state}, {:idle, :state}, {:idle, :state}])
     test = self()
     id = make_ref()
 
@@ -188,7 +190,7 @@ defmodule TelemetryTest do
   end
 
   test "a checkout from a pool that is not running is a checkout with its error" do
-    {:ok, agent} = A.start_link([{:ok, :state}])
+    {:ok, agent} = A.start_link([{:ok, :state}, :ok])
     {:ok, pool} = P.start_link(agent: agent, parent: self())
     attach(pool)
     Process.unlink(pool)
